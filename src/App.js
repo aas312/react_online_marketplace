@@ -36,10 +36,12 @@ class App extends Component {
       selectedStoreFrontBalance: 0,
       showStoreFrontTable: false,
       showProductsTable: false,
+      showPurchaseProduct: false
 
     }
     this.getStoreOwnersStoreFronts = this.getStoreOwnersStoreFronts.bind(this);
     this.getStoresProducts = this.getStoresProducts.bind(this);
+    this.getStoreFronts = this.getStoreFronts.bind(this);
   }
 
   componentWillMount() {
@@ -96,6 +98,8 @@ class App extends Component {
           simpleStorageContract: simpleStorageInstance,
           account: accounts[0],
           admin: accounts[0],
+          storeowner: accounts[1],
+          shopper: accounts[accounts.length - 1],
           storeowners: accounts.slice(1,5),
           shoppers: accounts.slice(5)
         })
@@ -133,8 +137,10 @@ class App extends Component {
     .then((role) => {
       console.log(role.toString())
       this.setState({ role: role.toNumber(), account: account });
-      if (role.toNumber() === 2) {
+      if (role.toNumber() === 2 ) {
         this.getStoreOwnersStoreFronts()
+      } else if (role.toNumber() === 401) {
+        this.getStoreFronts()
       }
     })
     
@@ -195,15 +201,42 @@ class App extends Component {
       }         
     })    
   }
+  getStoreFronts() {
+    const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
+    const account = this.state.loginAccount;
+    const event = onlineMarketplaceContract.allEvents({fromBlock:0, toBlock: 'latest'});
+    event.get((err,events) => {
+      if (!err) {
+        let storefronts =  _.filter(events, (event) => {
+          return _.isEqual(event.event, "CreateStoreFront")
+        })
+        
+        this.setState({
+          storefronts:_.map(storefronts, (storefront) => { 
+            return storefront.args
+          })
+        });
+      }         
+    })    
+  }
   handleWithdrawClick(param, event) {
-    this.setState({
-      selectedStoreFrontId: param,
-      showAddProduct: false, 
-      showWithdraw:true,
-      showProductsTable: false, 
-      showRemoveProduct: false,
-      showChangeProductPrice: false 
+    const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
+    const account = this.state.loginAccount;
+    const _storeFrontId = param;
+    onlineMarketplaceContract.getStoreBalance.call(_storeFrontId, {from: account, gas: 9040000})
+    .then((balance) => {
+      this.setState({
+        selectedStoreFrontId: _storeFrontId,
+        selectedStoreFrontBalance: _.toInteger(balance.toNumber()),
+        showAddProduct: false, 
+        showWithdraw:true,
+        showProductsTable: false, 
+        showRemoveProduct: false,
+        showChangeProductPrice: false 
+      })
     })
+    
+    
   }
   handleGetProductsClick(param,event) {
     this.setState({
@@ -286,12 +319,12 @@ class App extends Component {
   }
   handleProductPriceChange(event) {
     this.setState({
-      productPrice: event.target.value
+      productPrice: _.toSafeInteger(event.target.value)
     })
   }
   handleProductQtyChange(event) {
     this.setState({
-      productQty: event.target.value
+      productQty: _.toSafeInteger(event.target.value)
     })
   }
   handleProductChangePriceClick(_sku, event) {
@@ -314,14 +347,16 @@ class App extends Component {
       showChangeProductPrice: false 
     })
   }
-  handleProductPurchaseClick(_sku, event) {
+  handleProductPurchaseClick(_product, event) {
     this.setState({
-      selectedProductSku: _sku,
+      selectedProductSku: _product._sku,
+      selectedProductPrice: _product._price,
       showAddProduct: false, 
       showWithdraw:false,
       showProductsTable: false, 
       showRemoveProduct: false,
-      showChangeProductPrice: false 
+      showChangeProductPrice: false,
+      showPurchaseProduct: true
     })
   }
   handleChangeProductPriceClick() {
@@ -346,7 +381,6 @@ class App extends Component {
   handleConfirmRemoveProductClick() {
     const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
     const account = this.state.loginAccount;
-    const _price = _.toInteger(this.state.productPrice);
     const _storeFrontId = this.state.selectedStoreFrontId;
     const _sku = this.state.selectedProductSku;
     onlineMarketplaceContract.removeProduct( 
@@ -361,6 +395,45 @@ class App extends Component {
       this.getStoresProducts(_storeFrontId)
     })
   }
+  handleConfirmPurchaseClick() {
+    const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
+    const account = this.state.loginAccount;
+    const _storeFrontId = this.state.selectedStoreFrontId;
+    const _sku = this.state.selectedProductSku;
+    const _qty = this.state.productQty;
+    const _price = this.state.selectedProductPrice;
+    const _totalPrice = _.toSafeInteger(_price) * _.toSafeInteger(_qty);
+    const _value = this.state.web3.toWei(_totalPrice, 'ether');
+    console.log(_totalPrice, _value)
+    onlineMarketplaceContract.purchaseProduct( 
+      _storeFrontId,
+      _sku,
+      _qty,
+      {from: account, gas: 9040000, value: _value})
+    .then((tx) => {
+      console.log(tx);
+      this.setState({
+        purchaseProductTxResult: tx.logs
+      })      
+      this.getStoresProducts(_storeFrontId)
+    })
+  }
+  handleConfirmWithdraw() {
+    const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
+    const account = this.state.loginAccount;
+    const _storeFrontId = this.state.selectedStoreFrontId;
+    const _sku = this.state.selectedProductSku;
+    onlineMarketplaceContract.withdraw( 
+      _storeFrontId,
+      _sku,
+      {from: account, gas: 9040000})
+    .then((tx) => {
+      console.log(tx);
+      this.setState({
+        withdrawTxResult: tx.logs
+      })
+    })
+  }
   render() {
     return (
       <div className="App">
@@ -372,16 +445,17 @@ class App extends Component {
           <div className="pure-g">
             <div className="pure-u-1-1">
               <h1>Online Marketplace</h1>
-              <p>Your Truffle Box is installed and ready.</p>
+              {/* <p>Your Truffle Box is installed and ready.</p>
               <h2>Smart Contract Example</h2>
               <p>If your contracts compiled and migrated successfully, below will show a stored value of 5 (by default).</p>
               <p>Try changing the value stored on <strong>line 59</strong> of App.js.</p>
               <p>The stored value is: {this.state.storageValue}</p>
-              <button onClick={this.handleClick.bind(this)}>Set Storage</button>
+              <button onClick={this.handleClick.bind(this)}>Set Storage</button> */}
             </div>
             <div className="pure-u-1-1">  
               <p>Administrator Account: {this.state.admin}</p>
-              <p>Storeowner Account: 0x41ecc4f5765e11fffd65082a94fe72d8b2ba3aea</p>
+              <p>Storeowner Account: {this.state.storeowner}</p>
+              <p>Shopper Account: {this.state.shopper}</p>
               {this.state.role == 0 ? 
                 <div><input type="text" value={this.state.loginAccount} onChange={this.handleLoginChange.bind(this)} />
                 <button onClick={this.handleLogin.bind(this)}>Login</button></div>
@@ -467,7 +541,6 @@ class App extends Component {
                             <td>{product._qty}</td>
                             <td><button onClick={this.handleProductChangePriceClick.bind(this, product._sku)}>Change Price</button></td>
                             <td><button onClick={this.handleProductRemoveClick.bind(this, product._sku)}>Remove</button></td>
-                            <td><button onClick={this.handleProductPurchaseClick.bind(this, product._sku)}>Purchase</button></td>
                         </tr>)
                       })
                     }
@@ -502,7 +575,10 @@ class App extends Component {
               <div>
                 <p>With draw funds</p>
                 <div>
-                  
+                  <p> Store Front Id:<input type="text" value={this.state.selectedStoreFrontId} /></p>
+                  <p> Store Front Balance:<input type="text" value={this.state.selectedStoreFrontBalance} /></p>                  
+                  <button onClick={this.handleConfirmWithdraw.bind(this)}>Confirm Withdraw</button>
+                  <p>{this.state.withdrawTxResult ? "Success" : null}</p>
                 </div>
               </div>
               : null }
@@ -511,6 +587,67 @@ class App extends Component {
             {this.state.role === 401 ?
             <div className="pure-u-1-1">
               <p>Shopper view</p>
+              {!this.state.showProductsTable ? 
+              <div className="pure-u-1-1">
+                <table className="pure-table">
+                    <tr>
+                      <th>Store Front Id</th>
+                      <th>Name</th>
+                      <th>Store Front Owner</th>
+                      <th></th>
+                    </tr>
+                  {
+                    _.map(this.state.storefronts, (storefront, i)=>{
+                      return (<tr key={i}>
+                          <td>{storefront._storeFrontId}</td>
+                          <td>{storefront._name}</td>
+                          <td>{storefront._owner}</td>                          
+                          <td><button onClick={this.handleGetProductsClick.bind(this, storefront._storeFrontId)}>View Products</button></td>
+                      </tr>)
+                    })
+                  }
+                </table>
+              </div>
+              : null }
+              {this.state.showProductsTable ? 
+              <div>
+                <p>StoreFront products</p>
+                <div>
+                  <table className="pure-table">
+                      <tr>
+                        <th>Sku#</th>
+                        <th>Name</th>
+                        <th>Price</th>
+                        <th>Qty</th>
+                        <th></th>
+                      </tr>
+                    {
+                      _.map(this.state.products, (product, i)=>{
+                        return (<tr key={i}>
+                            <td>{product._sku}</td>
+                            <td>{product._name}</td>
+                            <td>{product._price}</td>
+                            <td>{product._qty}</td>
+                            <td><button onClick={this.handleProductPurchaseClick.bind(this, product)}>Purchase</button></td>
+                        </tr>)
+                      })
+                    }
+                  </table>
+                </div>
+              </div>  
+              : null}
+              {this.state.showPurchaseProduct ? 
+                <div>
+                <p>Purchase Product</p>
+                <div>
+                  <p> Store Front Id:<input type="text" value={this.state.selectedStoreFrontId} /></p>
+                  <p> Product Sku:<input type="text" value={this.state.selectedProductSku} /></p>
+                  <p> Product Qty:<input type="text" value={this.state.productQty} onChange={this.handleProductQtyChange.bind(this)} /></p>
+                  <button onClick={this.handleConfirmPurchaseClick.bind(this)}>Confirm Purhcase</button>
+                  <p>{this.state.purchaseProductTxResult ? "Success" : null}</p>
+                </div>
+              </div> 
+              : null}
             </div>
             : null}
           </div>
