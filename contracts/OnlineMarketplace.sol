@@ -128,7 +128,7 @@ contract OnlineMarketplace {
         skuCount = 0;
     }
     
-    /** Checks if the pased address is an administrator
+    /** Checks if the passed address is an administrator
      * @param _address  THe address to check.
      * @return success
      */
@@ -184,7 +184,7 @@ contract OnlineMarketplace {
     }
 
      
-    /**Check if the passed address is an approved store owners
+    /**Check if the passed address is a valid user
      * @return success
      */
     function login()
@@ -199,7 +199,10 @@ contract OnlineMarketplace {
         }
     }
        
-    
+    /**Crate a store front
+    * @param _name name of the store front
+    * @return success
+     */
     function createStoreFront(string _name)
         public
         verifyIsApprovedStoreOwner
@@ -405,6 +408,10 @@ contract OnlineMarketplace {
         emit Sold(_storeFrontId, _sku, _qty, msg.sender);
     }
 
+    /**
+     * @dev Withdraw funds from a store and send it to the owner of the store front
+     * @param _storeFrontId The id of the store front
+     */
     function withdraw(bytes32 _storeFrontId)
         public
         verifyIsApprovedStoreOwner
