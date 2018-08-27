@@ -1,7 +1,9 @@
 pragma solidity ^0.4.24;
 
+import "zeppelin/contracts/ownership/Ownable.sol";
+import "zeppelin/contracts/lifecycle/Destructible.sol";
 /** @title OnlineMarketplace. */
-contract OnlineMarketplace {
+contract OnlineMarketplace is Ownable,Destructible {
     
     /**A struct type.
         Creates a product struct
@@ -70,6 +72,8 @@ contract OnlineMarketplace {
     event Removed(bytes32 _storeFrontId, uint _sku);
     
     event Withdraw(bytes32 _storeFrontId, uint _balance);
+
+    event LogSender(address _address);
     
     /* Checks if msg.sender is the owner of the contract */
     modifier isOwner() {
@@ -128,6 +132,11 @@ contract OnlineMarketplace {
         skuCount = 0;
     }
     
+    function () 
+        public
+    {
+        emit LogSender(msg.sender);
+    }
     /** Checks if the passed address is an administrator
      * @param _address  THe address to check.
      * @return success
