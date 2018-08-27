@@ -93,9 +93,9 @@ contract('OnlineMarketplace', function(accounts) {
             eventEmitted = true
         });
         
-        await onlineMarketplace.addProduct(storeFrontId, productName1, price, {from: storeowner, gas: 9040000});
-        await onlineMarketplace.addProduct(storeFrontId, productName2, price, {from: storeowner, gas: 9040000});
-        await onlineMarketplace.addProduct(storeFrontId, productName3, price, {from: storeowner, gas: 9040000});
+        await onlineMarketplace.addProduct(storeFrontId, productName1, price,10, {from: storeowner, gas: 9040000});
+        await onlineMarketplace.addProduct(storeFrontId, productName2, price,10, {from: storeowner, gas: 9040000});
+        await onlineMarketplace.addProduct(storeFrontId, productName3, price,10, {from: storeowner, gas: 9040000});
 
         const count = await onlineMarketplace.getProductCountForAStore.call(storeFrontId);
         const result = await onlineMarketplace.getProduct.call(storeFrontId,count - 1);
@@ -157,7 +157,7 @@ contract('OnlineMarketplace', function(accounts) {
         
         storeBalanceBefore = storeBalanceBefore.toNumber();
 
-        await onlineMarketplace.purchaseProduct(storeFrontId, sku, {from: shopper, gas: 9040000, value: amount});  
+        await onlineMarketplace.purchaseProduct(storeFrontId, sku, 1, {from: shopper, gas: 9040000, value: amount});  
         
         var shopperBalanceAfter = await web3.eth.getBalance(shopper).toNumber();
         

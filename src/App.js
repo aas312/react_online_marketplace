@@ -1,4 +1,5 @@
 import React, { Component } from 'react'
+import _ from 'lodash';
 // import Dropdown from 'react-dropdown'
 // import 'react-dropdown/style.css' 
 import SimpleStorageContract from '../build/contracts/SimpleStorage.json'
@@ -26,8 +27,19 @@ class App extends Component {
       value:"0x0000000000000000000000000000000000000000",
       loginAccount: "0x0000000000000000000000000000000000000000",
       storeowner: "0x0000000000000000000000000000000000000000",
-      shopper:"0x0000000000000000000000000000000000000000"
+      shopper:"0x0000000000000000000000000000000000000000",
+      storefront: "",
+      storefronts: [],
+      products:[],
+      selectedProductSku:null,
+      selectedStoreFrontId: null,
+      selectedStoreFrontBalance: 0,
+      showStoreFrontTable: false,
+      showProductsTable: false,
+
     }
+    this.getStoreOwnersStoreFronts = this.getStoreOwnersStoreFronts.bind(this);
+    this.getStoresProducts = this.getStoresProducts.bind(this);
   }
 
   componentWillMount() {
@@ -121,9 +133,13 @@ class App extends Component {
     .then((role) => {
       console.log(role.toString())
       this.setState({ role: role.toNumber(), account: account });
+      if (role.toNumber() === 2) {
+        this.getStoreOwnersStoreFronts()
+      }
     })
     
   }
+
   handleLogout(event) {
     this.setState({ role: 0, account: "0x0000000000000000000000000000000000000000"});
   }
@@ -137,12 +153,194 @@ class App extends Component {
     const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
     const account = this.state.loginAccount;
     const storeowner = this.state.storeowner;
-    onlineMarketplaceContract.addStoreOwner(storeowner, {from:account})
+    onlineMarketplaceContract.addStoreOwner(storeowner, {from:account, gas: 9040000})
     .then((tx) => {
       console.log(tx);
-      // this.setState({
-      //   txResult: tx.event.
-      // })
+      this.setState({
+        addStoreOwnerTxResult: tx.logs
+      })
+    })
+  }
+  handleStoreFrontChange(event)  {
+    this.setState({storefront: event.target.value});
+  }
+  handleCreateStoreFront(event) {
+    const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
+    const account = this.state.loginAccount;
+    const storefront = this.state.storefront;
+    onlineMarketplaceContract.createStoreFront(storefront, {from: account, gas: 9040000})
+    .then((tx) => {
+      console.log(tx);
+      this.setState({
+        createStoreFrontTxResult: tx.logs
+      })
+      this.getStoreOwnersStoreFronts()
+    })
+  }
+  getStoreOwnersStoreFronts() {
+    const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
+    const account = this.state.loginAccount;
+    const event = onlineMarketplaceContract.allEvents({fromBlock:0, toBlock: 'latest'});
+    event.get((err,events) => {
+      if (!err) {
+        let storefronts =  _.filter(events, (event) => {
+          return _.isEqual(event.event, "CreateStoreFront") && _.isEqual(event.args._owner, account)
+        })
+        
+        this.setState({
+          storefronts:_.map(storefronts, (storefront) => { 
+            return storefront.args
+          })
+        });
+      }         
+    })    
+  }
+  handleWithdrawClick(param, event) {
+    this.setState({
+      selectedStoreFrontId: param,
+      showAddProduct: false, 
+      showWithdraw:true,
+      showProductsTable: false, 
+      showRemoveProduct: false,
+      showChangeProductPrice: false 
+    })
+  }
+  handleGetProductsClick(param,event) {
+    this.setState({
+      selectedStoreFrontId: param,
+      showAddProduct: false, 
+      showWithdraw:false,
+      showProductsTable: true, 
+      showRemoveProduct: false,
+      showChangeProductPrice: false 
+    })
+    this.getStoresProducts(param);
+  }
+  getStoresProducts(storeFrontId) {
+    const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
+    const account = this.state.loginAccount;
+    const _storeFrontId = storeFrontId;
+    onlineMarketplaceContract.getProductCountForAStore.call(_storeFrontId, {from: account, gas: 9040000})
+    .then((count) => {
+      let _count = count.toNumber();     
+      let getSkus = [];
+      for(let i = 0; i < count; i++) {
+        getSkus.push(onlineMarketplaceContract.getProductIdStoredAtIndex(_storeFrontId, i, {from: account, gas: 9040000}))
+      }
+      return Promise.all(getSkus)
+    })
+    .then((_skus) => {
+      let getProducts = [];
+      _.forEach(_skus, (_sku) => {
+        getProducts.push(onlineMarketplaceContract.getProduct(_storeFrontId, _sku, {from: account, gas: 9040000}))
+      })
+      return Promise.all(getProducts);
+    })
+    .then((_products) => {
+      this.setState({
+        products: _.map(_products,(_product) => {
+          console.log(_product)
+          return {
+            _sku: _product[0].toNumber(),
+            _name: _product[1],
+            _price: _product[2].toNumber(),
+            _qty: _product[3].toNumber(),
+          }
+        })
+      })
+    })
+  }
+  handleAddProductClick(param, event) {
+    this.setState({
+      selectedStoreFrontId: param,
+      showAddProduct: true, 
+      showWithdraw:false,
+      showProductsTable: false, 
+      showRemoveProduct: false,
+      showChangeProductPrice: false 
+    })
+  }
+  handleAddProductToStoreClick(event) {
+    const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
+    const account = this.state.loginAccount;
+    const name = this.state.productName;
+    const price = _.toInteger(this.state.productPrice);
+    const qty = _.toInteger(this.state.productQty);
+    const selectedStoreFrontId = this.state.selectedStoreFrontId;
+    onlineMarketplaceContract.addProduct(selectedStoreFrontId, 
+      name,
+      price,
+      qty,
+      {from: account, gas: 9040000})
+    .then((tx) => {
+      console.log(tx);
+      this.setState({
+        addProductTxResult: tx.logs
+      })      
+    })
+  }
+  handleProductNameChange(event) {
+    this.setState({
+      productName: event.target.value
+    })
+  }
+  handleProductPriceChange(event) {
+    this.setState({
+      productPrice: event.target.value
+    })
+  }
+  handleProductQtyChange(event) {
+    this.setState({
+      productQty: event.target.value
+    })
+  }
+  handleProductChangePriceClick(_sku, event) {
+    this.setState({
+      selectedProductSku: _sku,
+      showAddProduct: false, 
+      showWithdraw:false,
+      showProductsTable: false, 
+      showRemoveProduct: false,
+      showChangeProductPrice: true 
+    })
+  }
+  handleProductRemoveClick(_sku, event) {
+    this.setState({
+      selectedProductSku: _sku,
+      showAddProduct: false, 
+      showWithdraw:false,
+      showProductsTable: false, 
+      showRemoveProduct: true,
+      showChangeProductPrice: false 
+    })
+  }
+  handleProductPurchaseClick(_sku, event) {
+    this.setState({
+      selectedProductSku: _sku,
+      showAddProduct: false, 
+      showWithdraw:false,
+      showProductsTable: false, 
+      showRemoveProduct: false,
+      showChangeProductPrice: false 
+    })
+  }
+  handleChangeProductPriceClick() {
+    const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
+    const account = this.state.loginAccount;
+    const _price = _.toInteger(this.state.productPrice);
+    const _storeFrontId = this.state.selectedStoreFrontId;
+    const _sku = this.state.selectedProductSku;
+    onlineMarketplaceContract.changePrice( 
+      _storeFrontId,
+      _sku,
+      _price,
+      {from: account, gas: 9040000})
+    .then((tx) => {
+      console.log(tx);
+      this.setState({
+        chanegProductPriceTxResult: tx.logs
+      })      
+      this.getStoresProducts(_storeFrontId)
     })
   }
   render() {
@@ -165,10 +363,12 @@ class App extends Component {
             </div>
             <div className="pure-u-1-1">  
               <p>Administrator Account: {this.state.admin}</p>
+              <p>Storeowner Account: 0x41ecc4f5765e11fffd65082a94fe72d8b2ba3aea</p>
               {this.state.role == 0 ? 
                 <div><input type="text" value={this.state.loginAccount} onChange={this.handleLoginChange.bind(this)} />
                 <button onClick={this.handleLogin.bind(this)}>Login</button></div>
-               : <button onClick={this.handleLogout.bind(this)}>Logout</button>}
+               : <div>Currently LoggedIn Account: {this.state.account}<button onClick={this.handleLogout.bind(this)}>Logout</button></div>}
+
             </div>
             {this.state.role === 1 ?
             <div className="pure-u-1-1">
@@ -176,12 +376,115 @@ class App extends Component {
               <AvaiableAccounts accounts={this.state.storeowners} />
               <input type="text" value={this.state.storeowner} onChange={this.handleStoreOwnerChange.bind(this)} />
               <button onClick={this.handleAddApprovedStoreOwnerSubmit.bind(this)}>Add Store Owner</button>
-              <p>{this.state.value}</p>
+              
+              <p>{this.state.addStoreOwnerTxResult ? "Success" : null}</p>
             </div>
             : null}
             {this.state.role === 2 ?
             <div className="pure-u-1-1">
               <p>Store Owner view</p>
+              <div>
+                <input type="text" value={this.state.storefront} onChange={this.handleStoreFrontChange.bind(this)} />
+                <button onClick={this.handleCreateStoreFront.bind(this)}>Create Store Front</button>
+                <p>{this.state.storefront}</p>
+                <p>{this.state.createStoreFrontTxResult ? "Success" : null}</p>
+              </div>
+              <div>
+                <table className="pure-table">
+                    <tr>
+                      <th>Store Front Id</th>
+                      <th>Name</th>
+                      <th>Store Front Owner</th>
+                      <th>Get Balance</th>
+                      <th>Get Products</th>
+                      <th>Add Product</th>
+                    </tr>
+                  {
+                    _.map(this.state.storefronts, (storefront, i)=>{
+                      return (<tr key={i}>
+                          <td>{storefront._storeFrontId}</td>
+                          <td>{storefront._name}</td>
+                          <td>{storefront._owner}</td>
+                          <td><button onClick={this.handleWithdrawClick.bind(this, storefront._storeFrontId)}>Withdraw</button></td>
+                          <td><button onClick={this.handleGetProductsClick.bind(this, storefront._storeFrontId)}>Get products</button></td>
+                          <td><button onClick={this.handleAddProductClick.bind(this, storefront._storeFrontId)}>Add Product</button></td>
+                      </tr>)
+                    })
+                  }
+                </table>
+              </div>
+              {this.state.showAddProduct ? 
+              <div>
+                <p>Add product</p>
+                <div>
+                  <p> Store Front Id:<input type="text" value={this.state.selectedStoreFrontId} /></p>
+                  <p> Product Name:<input type="text" value={this.state.productName} onChange={this.handleProductNameChange.bind(this)} /></p>
+                  <p> Product Price:<input type="text" value={this.state.productPrice} onChange={this.handleProductPriceChange.bind(this)} /></p>
+                  <p> Product Qty:<input type="text" value={this.state.productQty} onChange={this.handleProductQtyChange.bind(this)} /></p>
+                  <button onClick={this.handleAddProductToStoreClick.bind(this)}>Add Product To Store</button>
+                  <p>{this.state.addProductTxResult ? "Success" : null}</p>
+                </div>
+              </div>
+              : null }
+              {this.state.showProductsTable ?
+              <div>
+                <p>StoreFront products</p>
+                <div>
+                  <table className="pure-table">
+                      <tr>
+                        <th>Sku#</th>
+                        <th>Name</th>
+                        <th>Price</th>
+                        <th>Qty</th>
+                        <th></th>
+                        <th></th>
+                        <th></th>
+                      </tr>
+                    {
+                      _.map(this.state.products, (product, i)=>{
+                        return (<tr key={i}>
+                            <td>{product._sku}</td>
+                            <td>{product._name}</td>
+                            <td>{product._price}</td>
+                            <td>{product._qty}</td>
+                            <td><button onClick={this.handleProductChangePriceClick.bind(this, product._sku)}>Change Price</button></td>
+                            <td><button onClick={this.handleProductRemoveClick.bind(this, product._sku)}>Remove</button></td>
+                            <td><button onClick={this.handleProductPurchaseClick.bind(this, product._sku)}>Purchase</button></td>
+                        </tr>)
+                      })
+                    }
+                  </table>
+                </div>
+              </div>
+              : null }
+              {this.state.showRemoveProduct ? 
+              <div>
+                <p>Remove StoreFront products</p>
+                <div>
+                  
+                </div>
+              </div>
+              : null }
+              {this.state.showChangeProductPrice ? 
+              <div>
+                <p>Change StoreFront product price</p>
+                <div>
+                  <p> Store Front Id:<input type="text" value={this.state.selectedStoreFrontId} /></p>
+                  <p> Product Sku:<input type="text" value={this.state.selectedProductSku} /></p>
+                  <p> Product Price:<input type="text" value={this.state.productPrice} onChange={this.handleProductPriceChange.bind(this)} /></p>
+                  <button onClick={this.handleChangeProductPriceClick.bind(this)}>Change Product Price</button>
+                  <p>{this.state.chanegProductPriceTxResult ? "Success" : null}</p>
+                </div>
+              </div>              
+              : null }
+              {this.state.showWithdraw ? 
+              <div>
+                <p>With draw funds</p>
+                <div>
+                  
+                </div>
+              </div>
+              : null }
             </div>
             : null}
             {this.state.role === 401 ?

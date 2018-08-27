@@ -11,6 +11,7 @@ contract OnlineMarketplace {
         string name; // name of the product
         uint sku; // sku #
         uint price; // price
+        uint qty; // quantity
         State state; // Current state
         address buyer;
         uint index; // pointer to the index in productIndex;
@@ -60,11 +61,11 @@ contract OnlineMarketplace {
     
     event CreateStoreFront(bytes32 _storeFrontId, string _name, address _owner);
     
-    event ForSale(bytes32 _storeFrontId, string _productName, uint _sku);
+    event ForSale(bytes32 _storeFrontId, string _productName, uint _sku, uint _qty);
     
     event ChangePrice(bytes32 _storeFrontId, uint _sku,uint _oldPrice, uint _newPrice);
     
-    event Sold(bytes32 _storeFrontId, uint _sku);
+    event Sold(bytes32 _storeFrontId, uint _sku, uint _qty, address _buyer);
 
     event Removed(bytes32 _storeFrontId, uint _sku);
     
@@ -111,6 +112,12 @@ contract OnlineMarketplace {
         require(msg.value >= _price); 
         _;
     }
+    
+    modifier qtyAvailable(bytes32 _storeFrontId, uint _sku, uint _qty) { 
+        require(storeFronts[_storeFrontId].products[_sku].qty >= _qty); 
+        _;
+    }
+    
     /**Constructor.
         @dev Instantiates the skuCount to 0.  Sets owner to msg.sender.
      */
@@ -266,7 +273,7 @@ contract OnlineMarketplace {
      * @param _price The price of the product
      * @return success     
      */
-    function addProduct(bytes32 _storeFrontId, string _name, uint _price)
+    function addProduct(bytes32 _storeFrontId, string _name, uint _price, uint _qty)
         public
         verifyIsApprovedStoreOwner
         returns (bool success) 
@@ -276,11 +283,12 @@ contract OnlineMarketplace {
             name: _name,
             sku: skuCount,
             price: _price,
+            qty: _qty,
             state: State.ForSale,
             buyer: 0,
             index: storeFronts[_storeFrontId].productIndex.length - 1
         });
-        emit ForSale(_storeFrontId, _name, skuCount);
+        emit ForSale(_storeFrontId, _name, skuCount, _qty);
         skuCount = skuCount + 1;
         return true;
     }
@@ -315,6 +323,7 @@ contract OnlineMarketplace {
      * @param _sku The product Id to get detail about
      * @return _name The name of the product.
      * @return _price The price of the product
+     * @return _qty the quantity available
      * @return _buyer The buyer.
      * @return _state The prodcut state.
      * @return _index
@@ -322,13 +331,13 @@ contract OnlineMarketplace {
     function getProduct(bytes32 _storeFrontId, uint _sku)
         public
         view
-        returns (string _name, uint _price, address _buyer, State _state, uint _index) 
+        returns (uint sku, string _name, uint _price, uint _qty, uint _index) 
     {
         return (
+            _sku,
             storeFronts[_storeFrontId].products[_sku].name,
             storeFronts[_storeFrontId].products[_sku].price,
-            storeFronts[_storeFrontId].products[_sku].buyer,
-            storeFronts[_storeFrontId].products[_sku].state,
+            storeFronts[_storeFrontId].products[_sku].qty,
             storeFronts[_storeFrontId].products[_sku].index
         );
     }
@@ -381,17 +390,19 @@ contract OnlineMarketplace {
      * @param _sku The sku # of the product
      * @return success     
      */
-    function purchaseProduct(bytes32 _storeFrontId, uint _sku)
+    function purchaseProduct(bytes32 _storeFrontId, uint _sku, uint _qty)
         public
         payable        
         // forSale(_storeFrontId, _sku)
-        // paidEnough(storeFronts[_storeFrontId].products[_sku].price)
+        paidEnough(storeFronts[_storeFrontId].products[_sku].price)
+        qtyAvailable(_storeFrontId, _sku, _qty)
         // checkValue(_storeFrontId, _sku)        
     {
         storeFronts[_storeFrontId].balance = storeFronts[_storeFrontId].balance + storeFronts[_storeFrontId].products[_sku].price;
         storeFronts[_storeFrontId].products[_sku].state = State.Sold;
         storeFronts[_storeFrontId].products[_sku].buyer = msg.sender;
-        emit Sold(_storeFrontId, _sku);
+        storeFronts[_storeFrontId].products[_sku].qty = storeFronts[_storeFrontId].products[_sku].qty - _qty;
+        emit Sold(_storeFrontId, _sku, _qty, msg.sender);
     }
 
     function withdraw(bytes32 _storeFrontId)
