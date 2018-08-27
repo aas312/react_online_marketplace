@@ -338,7 +338,25 @@ class App extends Component {
     .then((tx) => {
       console.log(tx);
       this.setState({
-        chanegProductPriceTxResult: tx.logs
+        changeProductPriceTxResult: tx.logs
+      })      
+      this.getStoresProducts(_storeFrontId)
+    })
+  }
+  handleConfirmRemoveProductClick() {
+    const onlineMarketplaceContract = this.state.onlineMarketplaceContract;
+    const account = this.state.loginAccount;
+    const _price = _.toInteger(this.state.productPrice);
+    const _storeFrontId = this.state.selectedStoreFrontId;
+    const _sku = this.state.selectedProductSku;
+    onlineMarketplaceContract.removeProduct( 
+      _storeFrontId,
+      _sku,
+      {from: account, gas: 9040000})
+    .then((tx) => {
+      console.log(tx);
+      this.setState({
+        removeProductTxResult: tx.logs
       })      
       this.getStoresProducts(_storeFrontId)
     })
@@ -461,7 +479,10 @@ class App extends Component {
               <div>
                 <p>Remove StoreFront products</p>
                 <div>
-                  
+                  <p> Store Front Id:<input type="text" value={this.state.selectedStoreFrontId} /></p>
+                  <p> Product Sku:<input type="text" value={this.state.selectedProductSku} /></p>
+                  <button onClick={this.handleConfirmRemoveProductClick.bind(this)}>Confirm Remove Product</button>
+                  <p>{this.state.removeProductTxResult ? "Success" : null}</p>
                 </div>
               </div>
               : null }
@@ -473,7 +494,7 @@ class App extends Component {
                   <p> Product Sku:<input type="text" value={this.state.selectedProductSku} /></p>
                   <p> Product Price:<input type="text" value={this.state.productPrice} onChange={this.handleProductPriceChange.bind(this)} /></p>
                   <button onClick={this.handleChangeProductPriceClick.bind(this)}>Change Product Price</button>
-                  <p>{this.state.chanegProductPriceTxResult ? "Success" : null}</p>
+                  <p>{this.state.changeProductPriceTxResult ? "Success" : null}</p>
                 </div>
               </div>              
               : null }
